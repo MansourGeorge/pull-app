@@ -1,0 +1,17 @@
+bash# Step 1: Install everything (root + backend + frontend)
+npm run install-all
+
+# Step 2: Init the database
+mysql -u root -p < backend/config/schema.sql
+
+# Step 3: Copy and fill in your .env
+cp backend/.env.example backend/.env
+
+# Step 4: Run dev
+npm run dev
+If npm run dev still fails (e.g. on Windows with path issues), run them separately in two terminals:
+bash# Terminal 1
+cd backend && npm run dev
+
+# Terminal 2
+cd frontend && npm start
