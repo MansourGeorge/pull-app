@@ -5,6 +5,7 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
+    "build": "echo Build completed",
     "dev": "nodemon server.js",
     "init-db": "node config/initDb.js"
   },
