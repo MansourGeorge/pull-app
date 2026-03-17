@@ -24,6 +24,16 @@ app.use('/api/auth', require('./routes/auth'));
 app.use('/api/pulls', require('./routes/pulls'));
 app.use('/api/users', require('./routes/users'));
 
+const path = require('path');
+
+// Serve React build
+app.use(express.static(path.join(__dirname, '../frontend/build')));
+
+// Catch all routes → send React
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, '../frontend/build/index.html'));
+});
+
 // Socket.io for live draw
 io.on('connection', (socket) => {
   socket.on('join_pull', (pullId) => {
