@@ -24,7 +24,7 @@ app.use('/api/auth', require('./routes/auth'));
 app.use('/api/pulls', require('./routes/pulls'));
 app.use('/api/users', require('./routes/users'));
 
-const path = require('path');
+//const path = require('path');
 
 // Serve React build
 app.use(express.static(path.join(__dirname, '../frontend/build')));
