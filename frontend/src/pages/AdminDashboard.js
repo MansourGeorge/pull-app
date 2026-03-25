@@ -6,12 +6,13 @@ import api from '../utils/api';
 import { useLang } from '../context/LanguageContext';
 import { useAuth } from '../context/AuthContext';
 import { FiGrid, FiCheckCircle, FiAward, FiLock, FiEdit2, FiTrash2, FiPlus, FiX, FiCheck, FiSearch } from 'react-icons/fi';
+import { LEBANON_PHONE_PATTERN, isValidLebanesePhone, normalizeLebanesePhone } from '../utils/phone';
 
 export default function AdminDashboard() {
   const [pulls, setPulls] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [form, setForm] = useState({ title: '', description: '', admin_phone: '' });
+  const [form, setForm] = useState({ title: '', description: '', admin_phone: '', attempt_price: '' });
   const [photo, setPhoto] = useState(null);
   const [creating, setCreating] = useState(false);
   const [search, setSearch] = useState('');
@@ -29,45 +30,65 @@ export default function AdminDashboard() {
       setLoading(false);
     }
   };
-  useEffect(() => { fetchPulls(); }, []);
+
+  useEffect(() => {
+    fetchPulls();
+  }, []);
 
   const handleCreate = async (e) => {
     e.preventDefault();
+    const normalizedPhone = normalizeLebanesePhone(form.admin_phone);
+    if (!isValidLebanesePhone(normalizedPhone)) {
+      toast.error(t('phoneFormatInvalid'));
+      return;
+    }
     setCreating(true);
     try {
       const fd = new FormData();
-      Object.keys(form).forEach(k => fd.append(k, form[k]));
+      Object.keys(form).forEach((k) => {
+        if (k === 'admin_phone') {
+          fd.append(k, normalizedPhone);
+          return;
+        }
+        fd.append(k, form[k]);
+      });
       if (photo) fd.append('photo', photo);
       await api.post('/pulls', fd, { headers: { 'Content-Type': 'multipart/form-data' } });
       toast.success(t('pullCreated'));
       setShowCreateModal(false);
-      setForm({ title: '', description: '', admin_phone: '' });
+      setForm({ title: '', description: '', admin_phone: '', attempt_price: '' });
       setPhoto(null);
       fetchPulls();
-    } catch (err) { toast.error(err.response?.data?.message || t('errorCreate')); }
-    finally { setCreating(false); }
+    } catch (err) {
+      toast.error(err.response?.data?.message || t('errorCreate'));
+    } finally {
+      setCreating(false);
+    }
   };
 
   const openCreateModal = () => {
-    setForm({ title: '', description: '', admin_phone: user?.phone_number || '' });
+    setForm({ title: '', description: '', admin_phone: user?.phone_number || '', attempt_price: '' });
     setPhoto(null);
     setShowCreateModal(true);
   };
 
   const handleDelete = async (id, title) => {
     if (!window.confirm(`Delete "${title}"?`)) return;
-    try { await api.delete(`/pulls/${id}`); toast.success(t('pullDeleted')); fetchPulls(); }
-    catch { toast.error(t('errorDelete')); }
+    try {
+      await api.delete(`/pulls/${id}`);
+      toast.success(t('pullDeleted'));
+      fetchPulls();
+    } catch {
+      toast.error(t('errorDelete'));
+    }
   };
 
-  const statusLabel = (s) => s === 'active' ? t('statusActive') : s === 'completed' ? t('statusCompleted') : t('statusClosed');
-  const filteredPulls = pulls.filter(p => {
+  const statusLabel = (s) => (s === 'active' ? t('statusActive') : s === 'completed' ? t('statusCompleted') : t('statusClosed'));
+
+  const filteredPulls = pulls.filter((p) => {
     const q = search.trim().toLowerCase();
     if (!q) return true;
-    return (
-      p.title?.toLowerCase().includes(q) ||
-      p.description?.toLowerCase().includes(q)
-    );
+    return p.title?.toLowerCase().includes(q) || p.description?.toLowerCase().includes(q);
   });
 
   return (
@@ -75,13 +96,16 @@ export default function AdminDashboard() {
       <div className="grid grid-4" style={{ marginBottom: '2rem' }}>
         {[
           { Icon: FiGrid, val: pulls.length, label: t('totalPulls'), cls: 'purple' },
-          { Icon: FiCheckCircle, val: pulls.filter(p => p.status === 'active').length, label: t('activePulls'), cls: 'green' },
-          { Icon: FiAward, val: pulls.filter(p => p.status === 'completed').length, label: t('completedPulls'), cls: 'gold' },
-          { Icon: FiLock, val: pulls.filter(p => p.status === 'closed').length, label: t('closedPulls'), cls: 'red' },
+          { Icon: FiCheckCircle, val: pulls.filter((p) => p.status === 'active').length, label: t('activePulls'), cls: 'green' },
+          { Icon: FiAward, val: pulls.filter((p) => p.status === 'completed').length, label: t('completedPulls'), cls: 'gold' },
+          { Icon: FiLock, val: pulls.filter((p) => p.status === 'closed').length, label: t('closedPulls'), cls: 'red' },
         ].map((s, i) => (
           <div key={i} className="stat-card">
             <div className={`stat-icon ${s.cls}`}><s.Icon /></div>
-            <div><div className="stat-value">{s.val}</div><div className="stat-label">{s.label}</div></div>
+            <div>
+              <div className="stat-value">{s.val}</div>
+              <div className="stat-label">{s.label}</div>
+            </div>
           </div>
         ))}
       </div>
@@ -92,21 +116,21 @@ export default function AdminDashboard() {
             <span className="icon"><FiGrid /></span>
             {t('pulls')}
           </span>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flexWrap: 'wrap' }}>
+          <div className="admin-pulls-toolbar">
             <div className="search-bar">
               <span className="icon"><FiSearch /></span>
               <input
                 type="text"
                 value={search}
-                onChange={e => setSearch(e.target.value)}
+                onChange={(e) => setSearch(e.target.value)}
                 placeholder={t('search')}
                 aria-label={t('search')}
               />
             </div>
-          <button className="btn btn-primary btn-sm" onClick={openCreateModal}>
-            <span className="icon"><FiPlus /></span>
-            {t('addPull')}
-          </button>
+            <button className="btn btn-primary btn-sm" onClick={openCreateModal}>
+              <span className="icon"><FiPlus /></span>
+              {t('addPull')}
+            </button>
           </div>
         </div>
 
@@ -131,16 +155,23 @@ export default function AdminDashboard() {
             <table>
               <thead>
                 <tr>
-                  <th>{t('pullTitle')}</th><th>{t('status')}</th>
-                  <th>{t('winnerStat')}</th><th>{t('date')}</th><th>{t('actions')}</th>
+                  <th>{t('pullTitle')}</th>
+                  <th>{t('status')}</th>
+                  <th>{t('winnerStat')}</th>
+                  <th>{t('date')}</th>
+                  <th>{t('actions')}</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredPulls.map(pull => (
+                {filteredPulls.map((pull) => (
                   <tr key={pull.id}>
                     <td data-label={t('pullTitle')} style={{ fontWeight: 600 }}>{pull.title}</td>
                     <td data-label={t('status')}><span className={`badge badge-${pull.status}`}>{statusLabel(pull.status)}</span></td>
-                    <td data-label={t('winnerStat')}>{pull.winner_number !== null ? <span style={{ color: 'var(--accent)', fontWeight: 700 }}>{String(pull.winner_number).padStart(2,'0')}</span> : '—'}</td>
+                    <td data-label={t('winnerStat')}>
+                      {pull.winner_number !== null
+                        ? <span style={{ color: 'var(--accent)', fontWeight: 700 }}>{String(pull.winner_number).padStart(2, '0')}</span>
+                        : '-'}
+                    </td>
                     <td data-label={t('date')} style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>{new Date(pull.created_at).toLocaleDateString()}</td>
                     <td data-label={t('actions')}>
                       <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
@@ -162,7 +193,7 @@ export default function AdminDashboard() {
       </div>
 
       {showCreateModal && (
-        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowCreateModal(false)}>
+        <div className="modal-overlay" onClick={(e) => e.target === e.currentTarget && setShowCreateModal(false)}>
           <div className="modal">
             <div className="modal-header">
               <span className="modal-title">{t('addPull')}</span>
@@ -173,21 +204,34 @@ export default function AdminDashboard() {
             <form onSubmit={handleCreate}>
               <div className="form-group">
                 <label>{t('pullTitle')} *</label>
-                <input className="form-control" value={form.title} onChange={e => setForm({...form, title: e.target.value})} required placeholder="e.g." />
+                <input className="form-control" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} required placeholder="e.g." />
               </div>
               <div className="form-group">
                 <label>{t('pullDescription')}</label>
-                <textarea className="form-control" value={form.description} onChange={e => setForm({...form, description: e.target.value})} placeholder="Describe the pull and prizes..." />
+                <textarea className="form-control" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="Describe the pull and prizes..." />
               </div>
               <div className="form-group">
                 <label>{t('adminPhone')}</label>
-                <input className="form-control" value={form.admin_phone} onChange={e => setForm({...form, admin_phone: e.target.value})} placeholder="+961..." required />
+                <input className="form-control" value={form.admin_phone} onChange={(e) => setForm({ ...form, admin_phone: e.target.value })} placeholder="+961..." required type="tel" inputMode="tel" pattern={LEBANON_PHONE_PATTERN} title={t('phoneFormatHint')} />
+              </div>
+              <div className="form-group">
+                <label>{t('attemptPrice')}</label>
+                <input
+                  className="form-control"
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  value={form.attempt_price}
+                  onChange={(e) => setForm({ ...form, attempt_price: e.target.value })}
+                  placeholder={t('attemptPricePlaceholder')}
+                  required
+                />
               </div>
               <div className="form-group">
                 <label>{t('pullPhoto')}</label>
-                <input className="form-control" type="file" accept="image/*" onChange={e => setPhoto(e.target.files[0])} />
+                <input className="form-control" type="file" accept="image/*" onChange={(e) => setPhoto(e.target.files[0])} />
               </div>
-              <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+              <div className="modal-actions">
                 <button type="button" className="btn btn-secondary" onClick={() => setShowCreateModal(false)}>{t('cancel')}</button>
                 <button type="submit" className="btn btn-primary" disabled={creating}>
                   {creating ? t('loading') : (
@@ -205,3 +249,4 @@ export default function AdminDashboard() {
     </Layout>
   );
 }
+

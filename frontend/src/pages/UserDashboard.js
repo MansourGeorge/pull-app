@@ -4,10 +4,11 @@ import { toast } from 'react-toastify';
 import Layout from '../components/Layout';
 import api from '../utils/api';
 import { useLang } from '../context/LanguageContext';
-import { FiGrid, FiCheckCircle, FiAward, FiGift, FiInbox } from 'react-icons/fi';
+import { FiCheckCircle, FiAward, FiGift, FiInbox } from 'react-icons/fi';
 
 export default function UserDashboard() {
   const [pulls, setPulls] = useState([]);
+  const [walletTotal, setWalletTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState('active');
   const { t } = useLang();
@@ -16,10 +17,15 @@ export default function UserDashboard() {
     const fetchPulls = async () => {
       setLoading(true);
       try {
-        const res = await api.get('/pulls');
-        setPulls(res.data);
+        const [pullsRes, walletRes] = await Promise.all([
+          api.get('/pulls'),
+          api.get('/users/me/wallet-summary').catch(() => ({ data: { totalBalance: 0 } }))
+        ]);
+        setPulls(pullsRes.data);
+        setWalletTotal(Number(walletRes.data?.totalBalance || 0));
       } catch (err) {
         toast.error(err.response?.data?.message || t('errorGeneric'));
+        setWalletTotal(0);
       } finally {
         setLoading(false);
       }
@@ -32,23 +38,31 @@ export default function UserDashboard() {
 
   return (
     <Layout title={t('pulls')}>
-      <div style={{ marginBottom: '1.5rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-        {['active', 'completed'].map(f => (
-          <button key={f} onClick={() => setFilter(f)}
-            className={`btn btn-sm ${filter === f ? 'btn-primary' : 'btn-secondary'}`}>
-            {f === 'active' ? (
-              <>
-                <span className="icon"><FiCheckCircle /></span>
-                {t('active')}
-              </>
-            ) : (
-              <>
-                <span className="icon"><FiAward /></span>
-                {t('completed')}
-              </>
-            )}
-          </button>
-        ))}
+      <div style={{ marginBottom: '1.5rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+          {['active', 'completed'].map(f => (
+            <button key={f} onClick={() => setFilter(f)}
+              className={`btn btn-sm ${filter === f ? 'btn-primary' : 'btn-secondary'}`}>
+              {f === 'active' ? (
+                <>
+                  <span className="icon"><FiCheckCircle /></span>
+                  {t('active')}
+                </>
+              ) : (
+                <>
+                  <span className="icon"><FiAward /></span>
+                  {t('completed')}
+                </>
+              )}
+            </button>
+          ))}
+        </div>
+        <div className="attempts-highlight" style={{ marginInlineStart: 'auto' }}>
+          <span className="attempts-label">{t('currentBalance')}:</span>
+          <strong className={`attempts-value ${walletTotal > 0 ? 'positive' : 'zero'}`}>
+            {walletTotal.toFixed(2)}
+          </strong>
+        </div>
       </div>
 
       {loading ? (
@@ -78,6 +92,7 @@ export default function UserDashboard() {
                   )}
                 </div>
                 <div className="pull-card-title">{pull.title}</div>
+                <div className="pull-card-meta">{t('adminName')}: {pull.admin_name || pull.admin_username || '-'}</div>
                 {pull.description && <div className="pull-card-desc">{pull.description}</div>}
                 <div style={{ textAlign: 'right', fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '0.75rem' }}>
                   {t('clickToParticipate')}

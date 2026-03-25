@@ -3,27 +3,32 @@ import { toast } from 'react-toastify';
 import Layout from '../components/Layout';
 import api from '../utils/api';
 import { useLang } from '../context/LanguageContext';
+import { useAuth } from '../context/AuthContext';
 import { FiUsers, FiTarget, FiTrash2, FiX, FiCheck, FiSearch, FiEdit2 } from 'react-icons/fi';
+import { LEBANON_PHONE_PATTERN, isValidLebanesePhone, normalizeLebanesePhone } from '../utils/phone';
 
 export default function AdminUsersPage() {
+  const emptyAttemptsInfo = { currentBalance: 0 };
   const [users, setUsers] = useState([]);
-  const [pulls, setPulls] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showAttemptsModal, setShowAttemptsModal] = useState(null);
-  const [attemptsForm, setAttemptsForm] = useState({ pull_id: '', attempts: 1 });
+  const [attemptsForm, setAttemptsForm] = useState({ amount: '', action: 'add' });
+  const [attemptsInfo, setAttemptsInfo] = useState(emptyAttemptsInfo);
+  const [loadingAttemptsInfo, setLoadingAttemptsInfo] = useState(false);
   const [saving, setSaving] = useState(false);
   const [showEditModal, setShowEditModal] = useState(null);
   const [editForm, setEditForm] = useState({ username: '', full_name: '', phone_number: '', password: '', admin_password: '' });
   const [savingEdit, setSavingEdit] = useState(false);
   const [search, setSearch] = useState('');
-  const { t } = useLang();
+  const { t, lang } = useLang();
+  const { user } = useAuth();
+  const canEditOrDeleteUsers = user?.role === 'admin';
 
   const fetchAll = async () => {
     setLoading(true);
     try {
-      const [u, p] = await Promise.all([api.get('/users'), api.get('/pulls')]);
-      setUsers(u.data);
-      setPulls(p.data.filter(p => p.status === 'active'));
+      const res = await api.get('/users');
+      setUsers(res.data);
     } catch (err) {
       toast.error(err.response?.data?.message || t('errorGeneric'));
     } finally {
@@ -32,27 +37,81 @@ export default function AdminUsersPage() {
   };
   useEffect(() => { fetchAll(); }, []);
 
+  const closeAttemptsModal = () => {
+    setShowAttemptsModal(null);
+    setAttemptsForm({ amount: '', action: 'add' });
+    setAttemptsInfo(emptyAttemptsInfo);
+    setLoadingAttemptsInfo(false);
+  };
+
+  const openAttemptsModal = (selectedUser) => {
+    setShowAttemptsModal(selectedUser);
+    setAttemptsForm({ amount: '', action: 'add' });
+    setAttemptsInfo(emptyAttemptsInfo);
+  };
+
+  useEffect(() => {
+    const userId = showAttemptsModal?.id;
+
+    if (!userId) {
+      setAttemptsInfo(emptyAttemptsInfo);
+      setLoadingAttemptsInfo(false);
+      return;
+    }
+
+    let cancelled = false;
+    const fetchAttemptsInfo = async () => {
+      setLoadingAttemptsInfo(true);
+      try {
+        const res = await api.get(`/users/${userId}/attempts`);
+        if (!cancelled) {
+          setAttemptsInfo({
+            currentBalance: Number(res.data?.currentBalance || 0),
+          });
+        }
+      } catch (err) {
+        if (!cancelled) {
+          setAttemptsInfo(emptyAttemptsInfo);
+          toast.error(err.response?.data?.message || t('errorGeneric'));
+        }
+      } finally {
+        if (!cancelled) setLoadingAttemptsInfo(false);
+      }
+    };
+
+    fetchAttemptsInfo();
+    return () => { cancelled = true; };
+  }, [showAttemptsModal?.id, t]);
+
   const handleGiveAttempts = async (e) => {
     e.preventDefault();
     setSaving(true);
     try {
       await api.post(`/users/${showAttemptsModal.id}/attempts`, {
-        pull_id: attemptsForm.pull_id,
-        attempts: parseInt(attemptsForm.attempts)
+        amount: Number.parseFloat(attemptsForm.amount),
+        action: attemptsForm.action
       });
-      toast.success(t('attemptsGranted'));
-      setShowAttemptsModal(null);
+      toast.success(t('fundsUpdated'));
+      closeAttemptsModal();
     } catch (err) { toast.error(err.response?.data?.message || t('errorSave')); }
     finally { setSaving(false); }
   };
 
   const handleDeleteUser = async (id, username) => {
+    if (!canEditOrDeleteUsers) {
+      toast.error(lang === 'ar' ? 'لا تملك صلاحية تعديل أو حذف المستخدمين' : 'You cannot edit or delete users');
+      return;
+    }
     if (!window.confirm(`${t('deleteUserConfirm')} "${username}"?`)) return;
     try { await api.delete(`/users/${id}`); toast.success(t('userDeleted')); fetchAll(); }
     catch { toast.error(t('errorDelete')); }
   };
 
   const openEditModal = (user) => {
+    if (!canEditOrDeleteUsers) {
+      toast.error(lang === 'ar' ? 'لا تملك صلاحية تعديل أو حذف المستخدمين' : 'You cannot edit or delete users');
+      return;
+    }
     setShowEditModal(user);
     setEditForm({
       username: user.username || '',
@@ -69,12 +128,17 @@ export default function AdminUsersPage() {
       toast.error(t('adminPasswordRequired'));
       return;
     }
+    const normalizedPhone = normalizeLebanesePhone(editForm.phone_number);
+    if (!isValidLebanesePhone(normalizedPhone)) {
+      toast.error(t('phoneFormatInvalid'));
+      return;
+    }
     setSavingEdit(true);
     try {
       const payload = {
         username: editForm.username,
         full_name: editForm.full_name,
-        phone_number: editForm.phone_number,
+        phone_number: normalizedPhone,
         admin_password: editForm.admin_password
       };
       if (editForm.password && editForm.password.trim()) {
@@ -161,23 +225,27 @@ export default function AdminUsersPage() {
                     <td data-label={t('joinDate')} style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>{new Date(user.created_at).toLocaleDateString()}</td>
                     <td data-label={t('actions')}>
                       <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
-                        <button
-                          className="btn btn-sm btn-secondary"
-                          onClick={() => openEditModal(user)}
-                        >
-                          <span className="icon"><FiEdit2 /></span>
-                          {t('edit')}
-                        </button>
+                        {canEditOrDeleteUsers && (
+                          <button
+                            className="btn btn-sm btn-secondary"
+                            onClick={() => openEditModal(user)}
+                          >
+                            <span className="icon"><FiEdit2 /></span>
+                            {t('edit')}
+                          </button>
+                        )}
                         <button
                           className="btn btn-sm btn-primary"
-                          onClick={() => { setShowAttemptsModal(user); setAttemptsForm({ pull_id: pulls[0]?.id || '', attempts: 1 }); }}
+                          onClick={() => openAttemptsModal(user)}
                         >
                           <span className="icon"><FiTarget /></span>
-                          {t('giveAttempts')}
+                          {t('manageFunds')}
                         </button>
-                        <button className="btn btn-sm btn-danger" onClick={() => handleDeleteUser(user.id, user.username)} aria-label={t('deleteUser')}>
-                          <FiTrash2 />
-                        </button>
+                        {canEditOrDeleteUsers && (
+                          <button className="btn btn-sm btn-danger" onClick={() => handleDeleteUser(user.id, user.username)} aria-label={t('deleteUser')}>
+                            <FiTrash2 />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -189,14 +257,14 @@ export default function AdminUsersPage() {
       </div>
 
       {showAttemptsModal && (
-        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && setShowAttemptsModal(null)}>
+        <div className="modal-overlay" onClick={e => e.target === e.currentTarget && closeAttemptsModal()}>
           <div className="modal">
             <div className="modal-header">
               <span className="modal-title">
                 <span className="icon"><FiTarget /></span>
-                {t('giveAttempts')}
+                {t('manageFunds')}
               </span>
-              <button className="btn btn-icon btn-secondary" onClick={() => setShowAttemptsModal(null)} aria-label={t('close')}>
+              <button className="btn btn-icon btn-secondary" onClick={closeAttemptsModal} aria-label={t('close')}>
                 <FiX />
               </button>
             </div>
@@ -205,19 +273,43 @@ export default function AdminUsersPage() {
               <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>{showAttemptsModal.full_name}</div>
             </div>
             <form onSubmit={handleGiveAttempts}>
+              <div style={{ marginBottom: '1rem', padding: '0.9rem', background: 'var(--bg2)', borderRadius: 8, border: '1px solid rgba(255,255,255,0.06)' }}>
+                {loadingAttemptsInfo ? (
+                  <div style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>{t('loading')}</div>
+                ) : (
+                  <div style={{ display: 'grid', gap: '0.65rem' }}>
+                    <div>
+                      <div style={{ color: 'var(--text-muted)', fontSize: '0.74rem' }}>{t('currentBalance')}</div>
+                      <div style={{ fontSize: '1.1rem', fontWeight: 800 }}>{attemptsInfo.currentBalance.toFixed(2)}</div>
+                    </div>
+                  </div>
+                )}
+              </div>
               <div className="form-group">
-                <label>{t('pull')}</label>
-                <select className="form-control" value={attemptsForm.pull_id} onChange={e => setAttemptsForm({...attemptsForm, pull_id: e.target.value})} required>
-                  <option value="">{t('selectPull')}</option>
-                  {pulls.map(p => <option key={p.id} value={p.id}>{p.title}</option>)}
+                <label>{t('transactionType')}</label>
+                <select
+                  className="form-control"
+                  value={attemptsForm.action}
+                  onChange={e => setAttemptsForm({ ...attemptsForm, action: e.target.value })}
+                >
+                  <option value="add">{t('addFunds')}</option>
+                  <option value="remove">{t('cashback')}</option>
                 </select>
               </div>
               <div className="form-group">
-                <label>{t('attemptsCount')}</label>
-                <input className="form-control" type="number" min="1" value={attemptsForm.attempts} onChange={e => setAttemptsForm({...attemptsForm, attempts: e.target.value})} required />
+                <label>{t('amount')}</label>
+                <input
+                  className="form-control"
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  value={attemptsForm.amount}
+                  onChange={e => setAttemptsForm({ ...attemptsForm, amount: e.target.value })}
+                  required
+                />
               </div>
-              <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
-                <button type="button" className="btn btn-secondary" onClick={() => setShowAttemptsModal(null)}>{t('cancel')}</button>
+              <div className="modal-actions">
+                <button type="button" className="btn btn-secondary" onClick={closeAttemptsModal}>{t('cancel')}</button>
                 <button type="submit" className="btn btn-primary" disabled={saving}>
                   {saving ? t('loading') : (
                     <>
@@ -273,6 +365,10 @@ export default function AdminUsersPage() {
                   className="form-control"
                   value={editForm.phone_number}
                   onChange={e => setEditForm({ ...editForm, phone_number: e.target.value })}
+                  type="tel"
+                  inputMode="tel"
+                  pattern={LEBANON_PHONE_PATTERN}
+                  title={t('phoneFormatHint')}
                   required
                 />
               </div>
@@ -297,7 +393,7 @@ export default function AdminUsersPage() {
                   required
                 />
               </div>
-              <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+              <div className="modal-actions">
                 <button type="button" className="btn btn-secondary" onClick={() => setShowEditModal(null)}>{t('cancel')}</button>
                 <button type="submit" className="btn btn-primary" disabled={savingEdit || !editForm.admin_password.trim()}>
                   {savingEdit ? t('loading') : (

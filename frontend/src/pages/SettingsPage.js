@@ -5,13 +5,16 @@ import api from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import { useLang } from '../context/LanguageContext';
 import { FiShield, FiUser, FiCheck, FiSave, FiUserCheck } from 'react-icons/fi';
+import { LEBANON_PHONE_PATTERN, isValidLebanesePhone, normalizeLebanesePhone } from '../utils/phone';
 
 export default function SettingsPage({ isAdmin }) {
   const { user, updateUser } = useAuth();
-  const { t } = useLang();
+  const { t, lang } = useLang();
+  const isSubadmin = user?.role === 'subadmin';
+  const roleLabel = isSubadmin ? (lang === 'ar' ? 'مشرف فرعي' : 'Subadmin') : (isAdmin ? t('admin') : t('user'));
   const [form, setForm] = useState({ currentPassword: '', newPassword: '', confirm: '' });
   const [loading, setLoading] = useState(false);
-  const [profile, setProfile] = useState({ username: '', full_name: '', phone_number: '' });
+  const [profile, setProfile] = useState({ username: '', full_name: '', phone_number: '', loyalty_percentage: 0 });
   const [profileLoading, setProfileLoading] = useState(true);
   const [savingProfile, setSavingProfile] = useState(false);
 
@@ -21,7 +24,8 @@ export default function SettingsPage({ isAdmin }) {
       setProfile({
         username: res.data.username || '',
         full_name: res.data.full_name || '',
-        phone_number: res.data.phone_number || ''
+        phone_number: res.data.phone_number || '',
+        loyalty_percentage: Number(res.data.loyalty_percentage || 0)
       });
     } catch (err) {
       toast.error(err.response?.data?.message || t('errorGeneric'));
@@ -35,11 +39,12 @@ export default function SettingsPage({ isAdmin }) {
       setProfile({
         username: user?.username || '',
         full_name: user?.full_name || '',
-        phone_number: user?.phone_number || ''
+        phone_number: user?.phone_number || '',
+        loyalty_percentage: Number(user?.loyalty_percentage || 0)
       });
     }
     loadProfile();
-  }, [isAdmin, user?.username, user?.full_name, user?.phone_number]);
+  }, [isAdmin, user?.username, user?.full_name, user?.phone_number, user?.loyalty_percentage]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -60,7 +65,7 @@ export default function SettingsPage({ isAdmin }) {
     e.preventDefault();
     if (
       !profile.username.trim() ||
-      (!isAdmin && !profile.full_name.trim()) ||
+      !profile.full_name.trim() ||
       !profile.phone_number.trim()
     ) {
       toast.error(t('fieldsRequired'));
@@ -68,15 +73,34 @@ export default function SettingsPage({ isAdmin }) {
     }
     setSavingProfile(true);
     try {
+      const normalizedPhone = normalizeLebanesePhone(profile.phone_number);
+      if (!isValidLebanesePhone(normalizedPhone)) {
+        toast.error(t('phoneFormatInvalid'));
+        setSavingProfile(false);
+        return;
+      }
+      const parsedLoyaltyPercentage = Number.parseFloat(profile.loyalty_percentage === '' ? '0' : profile.loyalty_percentage);
+      if (isAdmin && (!Number.isFinite(parsedLoyaltyPercentage) || parsedLoyaltyPercentage < 0 || parsedLoyaltyPercentage > 100)) {
+        toast.error(t('loyaltyPercentageRange'));
+        setSavingProfile(false);
+        return;
+      }
+
       const payload = isAdmin
-        ? { username: profile.username.trim(), phone_number: profile.phone_number.trim() }
-        : { username: profile.username.trim(), full_name: profile.full_name.trim(), phone_number: profile.phone_number.trim() };
+        ? {
+            username: profile.username.trim(),
+            full_name: profile.full_name.trim(),
+            phone_number: normalizedPhone,
+            loyalty_percentage: Number(parsedLoyaltyPercentage.toFixed(2))
+          }
+        : { username: profile.username.trim(), full_name: profile.full_name.trim(), phone_number: normalizedPhone };
       const res = await api.put(isAdmin ? '/auth/admin/profile' : '/auth/user/profile', payload);
       updateUser(res.data);
       setProfile({
         username: res.data.username || '',
         full_name: res.data.full_name || '',
-        phone_number: res.data.phone_number || ''
+        phone_number: normalizedPhone,
+        loyalty_percentage: Number(res.data.loyalty_percentage || 0)
       });
       toast.success(t('profileUpdated'));
     } catch (err) {
@@ -98,7 +122,7 @@ export default function SettingsPage({ isAdmin }) {
               <div style={{ fontSize: '1.25rem', fontWeight: 800 }}>{user?.username}</div>
               <div style={{ color: 'var(--text-muted)', display: 'inline-flex', alignItems: 'center', gap: '0.4rem' }}>
                 <span className="icon">{isAdmin ? <FiShield /> : <FiUser />}</span>
-                {isAdmin ? t('admin') : t('user')}
+                {roleLabel}
               </div>
             </div>
           </div>
@@ -124,26 +148,43 @@ export default function SettingsPage({ isAdmin }) {
                   required
                 />
               </div>
-              {!isAdmin && (
-                <div className="form-group">
-                  <label>{t('fullName')}</label>
-                  <input
-                    className="form-control"
-                    value={profile.full_name}
-                    onChange={e => setProfile({ ...profile, full_name: e.target.value })}
-                    required
-                  />
-                </div>
-              )}
+              <div className="form-group">
+                <label>{t('fullName')}</label>
+                <input
+                  className="form-control"
+                  value={profile.full_name}
+                  onChange={e => setProfile({ ...profile, full_name: e.target.value })}
+                  required
+                />
+              </div>
               <div className="form-group">
                 <label>{t('phoneNumber')}</label>
                 <input
                   className="form-control"
                   value={profile.phone_number}
                   onChange={e => setProfile({ ...profile, phone_number: e.target.value })}
+                  type="tel"
+                  inputMode="tel"
+                  pattern={LEBANON_PHONE_PATTERN}
+                  title={t('phoneFormatHint')}
                   required
                 />
               </div>
+              {isAdmin && (
+                <div className="form-group">
+                  <label>{t('loyaltyPercentage')}</label>
+                  <input
+                    className="form-control"
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="0.01"
+                    value={profile.loyalty_percentage}
+                    onChange={e => setProfile({ ...profile, loyalty_percentage: e.target.value })}
+                    placeholder={t('loyaltyPercentagePlaceholder')}
+                  />
+                </div>
+              )}
               <button type="submit" className="btn btn-primary btn-full" disabled={savingProfile}>
                 {savingProfile ? t('loading') : (
                   <>

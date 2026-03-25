@@ -6,6 +6,8 @@ import { useAuth } from '../context/AuthContext';
 import { useLang } from '../context/LanguageContext';
 import { FiGlobe, FiLayers, FiLogIn, FiUser, FiShield } from 'react-icons/fi';
 
+const isAdminRole = (role) => role === 'admin' || role === 'subadmin';
+
 export default function LoginPage() {
   const [form, setForm] = useState({ username: '', password: '' });
   const [loading, setLoading] = useState(false);
@@ -16,7 +18,7 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (authLoading) return;
-    if (user?.role === 'admin') navigate('/admin', { replace: true });
+    if (isAdminRole(user?.role)) navigate('/admin', { replace: true });
     if (user?.role === 'user') navigate('/dashboard', { replace: true });
   }, [user, authLoading, navigate]);
 
@@ -28,7 +30,7 @@ export default function LoginPage() {
       const res = await api.post(endpoint, form);
       const { token, ...userData } = res.data;
       login(token, userData);
-      navigate(userData.role === 'admin' ? '/admin' : '/dashboard');
+      navigate(isAdminRole(userData.role) ? '/admin' : '/dashboard');
     } catch (err) {
       toast.error(err.response?.data?.message || t('loginError'));
     } finally { setLoading(false); }

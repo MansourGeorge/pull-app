@@ -1,14 +1,16 @@
-CREATE DATABASE IFmysql -u root -p < backend/config/schema.sql NOT EXISTS pull_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE DATABASE IF NOT EXISTS pull_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 USE pull_db;
 
 CREATE TABLE IF NOT EXISTS admins (
   id INT AUTO_INCREMENT PRIMARY KEY,
   username VARCHAR(50) UNIQUE NOT NULL,
+  full_name VARCHAR(100),
   password VARCHAR(255) NOT NULL,
+  role ENUM('admin','subadmin') NOT NULL DEFAULT 'admin',
   phone_number VARCHAR(20),
+  loyalty_percentage DECIMAL(5,2) NOT NULL DEFAULT 0.00,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
-ALTER TABLE admins ADD COLUMN phone_number VARCHAR(20);
 
 CREATE TABLE IF NOT EXISTS users (
   id INT AUTO_INCREMENT PRIMARY KEY,
@@ -32,8 +34,12 @@ CREATE TABLE IF NOT EXISTS pulls (
   status ENUM('active','closed','completed') DEFAULT 'active',
   winner_number INT,
   admin_phone VARCHAR(20),
+  attempt_price DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+  created_by_admin_id INT,
   created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  INDEX idx_pulls_creator (created_by_admin_id),
+  FOREIGN KEY (created_by_admin_id) REFERENCES admins(id) ON DELETE SET NULL
 );
 
 CREATE TABLE IF NOT EXISTS pull_numbers (
@@ -59,8 +65,8 @@ CREATE TABLE IF NOT EXISTS pull_history (
 );
 
 -- Insert default admin only if admins table is empty (password: admin123)
-INSERT INTO admins (username, password)
-SELECT 'admin', '$2a$10$WbhUchCTEVZ6sb8zXUZAe.JP9di2B7vFNF5S6Ot/s18s6WFTNWPWm'
+INSERT INTO admins (username, password, role)
+SELECT 'admin', '$2a$10$WbhUchCTEVZ6sb8zXUZAe.JP9di2B7vFNF5S6Ot/s18s6WFTNWPWm', 'admin'
 WHERE NOT EXISTS (SELECT 1 FROM admins LIMIT 1);
 
 INSERT INTO arabic_names (name) VALUES
@@ -88,7 +94,77 @@ CREATE TABLE IF NOT EXISTS user_pull_attempts (
   user_id INT NOT NULL,
   pull_id INT NOT NULL,
   attempts INT DEFAULT 0,
+  balance DECIMAL(10,2) NOT NULL DEFAULT 0.00,
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
   FOREIGN KEY (pull_id) REFERENCES pulls(id) ON DELETE CASCADE,
   UNIQUE KEY unique_user_pull (user_id, pull_id)
+);
+
+CREATE TABLE IF NOT EXISTS user_admin_wallets (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  user_id INT NOT NULL,
+  admin_id INT NOT NULL,
+  balance DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+  loyalty_balance DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (admin_id) REFERENCES admins(id) ON DELETE CASCADE,
+  UNIQUE KEY unique_user_admin_wallet (user_id, admin_id),
+  INDEX idx_wallet_admin (admin_id),
+  INDEX idx_wallet_user (user_id)
+);
+
+CREATE TABLE IF NOT EXISTS user_admin_loyalty (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  user_id INT NOT NULL,
+  admin_id INT NOT NULL,
+  spend_carry DECIMAL(10,2) NOT NULL DEFAULT 0.00,
+  total_spent DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+  total_rewards_generated DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+  total_rewards_redeemed DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (admin_id) REFERENCES admins(id) ON DELETE CASCADE,
+  UNIQUE KEY unique_user_admin_loyalty (user_id, admin_id),
+  INDEX idx_loyalty_user (user_id),
+  INDEX idx_loyalty_admin (admin_id)
+);
+
+CREATE TABLE IF NOT EXISTS loyalty_redeem_codes (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  code VARCHAR(40) NOT NULL UNIQUE,
+  user_id INT NOT NULL,
+  admin_id INT NOT NULL,
+  amount DECIMAL(10,2) NOT NULL,
+  status ENUM('available', 'redeemed') NOT NULL DEFAULT 'available',
+  redeemed_pull_id INT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  redeemed_at TIMESTAMP NULL,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+  FOREIGN KEY (admin_id) REFERENCES admins(id) ON DELETE CASCADE,
+  FOREIGN KEY (redeemed_pull_id) REFERENCES pulls(id) ON DELETE SET NULL,
+  INDEX idx_redeem_lookup (user_id, admin_id, status),
+  INDEX idx_redeem_admin (admin_id)
+);
+
+CREATE TABLE IF NOT EXISTS admin_report_ledger (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  admin_id INT NOT NULL,
+  actor_admin_id INT NULL,
+  user_id INT NULL,
+  pull_id INT NULL,
+  pull_number INT NULL,
+  entry_type ENUM('fund_add','cashback','number_purchase','redeem_applied','loyalty_code_generated') NOT NULL,
+  amount DECIMAL(12,2) NOT NULL,
+  note VARCHAR(255) NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (admin_id) REFERENCES admins(id) ON DELETE CASCADE,
+  FOREIGN KEY (actor_admin_id) REFERENCES admins(id) ON DELETE SET NULL,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL,
+  FOREIGN KEY (pull_id) REFERENCES pulls(id) ON DELETE SET NULL,
+  INDEX idx_report_admin_created (admin_id, created_at),
+  INDEX idx_report_admin_user_created (admin_id, user_id, created_at),
+  INDEX idx_report_type_created (entry_type, created_at)
 );

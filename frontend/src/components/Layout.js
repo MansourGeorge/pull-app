@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useLang } from '../context/LanguageContext';
-import { FiHome, FiUsers, FiSettings, FiGrid, FiList, FiLogOut, FiGlobe, FiMenu, FiLayers } from 'react-icons/fi';
+import { FiHome, FiUsers, FiSettings, FiGrid, FiList, FiLogOut, FiGlobe, FiMenu, FiLayers, FiUserPlus, FiStar, FiBarChart2 } from 'react-icons/fi';
 
 export default function Layout({ children, title }) {
   const { user, logout } = useAuth();
@@ -11,23 +11,35 @@ export default function Layout({ children, title }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   const handleLogout = () => { logout(); navigate('/login'); };
-  const isAdmin = user?.role === 'admin';
+  const isAdminPanel = user?.role === 'admin' || user?.role === 'subadmin';
+  const isMainAdmin = user?.role === 'admin';
+  const roleLabel = user?.role === 'subadmin'
+    ? (lang === 'ar' ? 'مشرف فرعي' : 'Subadmin')
+    : isAdminPanel
+      ? t('admin')
+      : t('user');
 
-  const navItems = isAdmin ? [
+  const adminNavItems = [
     { to: '/admin', label: t('dashboard'), Icon: FiHome, end: true },
     { to: '/admin/users', label: t('users'), Icon: FiUsers },
+    ...(isMainAdmin
+      ? [{ to: '/admin/subadmins', label: lang === 'ar' ? 'مشرفون فرعيون' : 'Subadmins', Icon: FiUserPlus }]
+      : []),
+    { to: '/admin/reports', label: t('reports'), Icon: FiBarChart2 },
     { to: '/admin/settings', label: t('settings'), Icon: FiSettings },
-  ] : [
+  ];
+
+  const navItems = isAdminPanel ? adminNavItems : [
     { to: '/dashboard', label: t('pulls'), Icon: FiGrid },
     { to: '/history', label: t('history'), Icon: FiList },
+    { to: '/loyalty', label: t('loyalty'), Icon: FiStar },
     { to: '/settings', label: t('settings'), Icon: FiSettings },
   ];
 
   return (
     <div className="layout">
       {sidebarOpen && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.5)', zIndex: 99 }}
-          onClick={() => setSidebarOpen(false)} />
+        <div className="sidebar-backdrop" onClick={() => setSidebarOpen(false)} />
       )}
 
       <aside className={`sidebar ${sidebarOpen ? 'open' : ''}`}>
@@ -37,7 +49,7 @@ export default function Layout({ children, title }) {
             <div>
               <h2>PullZone</h2>
               <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                {isAdmin ? t('adminPanel') : t('userPanel')}
+                {isAdminPanel ? t('adminPanel') : t('userPanel')}
               </div>
             </div>
           </div>
@@ -60,7 +72,7 @@ export default function Layout({ children, title }) {
             <div className="user-avatar">{(user?.username || 'U')[0].toUpperCase()}</div>
             <div className="user-info-text">
               <div className="user-info-name">{user?.username}</div>
-              <div className="user-info-role">{isAdmin ? t('admin') : t('user')}</div>
+              <div className="user-info-role">{roleLabel}</div>
             </div>
           </div>
           <button onClick={handleLogout} className="nav-item" style={{ marginTop: '0.5rem', color: 'var(--danger)' }}>
@@ -72,21 +84,21 @@ export default function Layout({ children, title }) {
 
       <div className="main-content">
         <div className="top-bar">
-          <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <div className="top-bar-left">
             <button className="menu-toggle" onClick={() => setSidebarOpen(!sidebarOpen)} aria-label="Toggle menu">
               <FiMenu />
             </button>
             <span className="top-bar-title">{title}</span>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <div className="top-bar-right">
             <button className="lang-toggle" onClick={toggleLang} title="Switch Language">
               <span className="icon"><FiGlobe /></span>
               {lang === 'en' ? 'عربي' : 'English'}
             </button>
-            <div className="user-avatar" style={{ width: 36, height: 36, fontSize: '0.9rem' }}>
+            <div className="user-avatar top-bar-avatar">
               {(user?.username || 'U')[0].toUpperCase()}
             </div>
-            <span style={{ fontSize: '0.9rem', fontWeight: 600 }}>{user?.username}</span>
+            <span className="top-bar-username">{user?.username}</span>
           </div>
         </div>
         <div className="page-content">{children}</div>
@@ -94,3 +106,4 @@ export default function Layout({ children, title }) {
     </div>
   );
 }
+

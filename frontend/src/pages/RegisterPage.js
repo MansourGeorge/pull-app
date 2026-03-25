@@ -5,6 +5,9 @@ import api from '../utils/api';
 import { useAuth } from '../context/AuthContext';
 import { useLang } from '../context/LanguageContext';
 import { FiGlobe, FiUserPlus } from 'react-icons/fi';
+import { LEBANON_PHONE_PATTERN, isValidLebanesePhone, normalizeLebanesePhone } from '../utils/phone';
+
+const isAdminRole = (role) => role === 'admin' || role === 'subadmin';
 
 export default function RegisterPage() {
   const DEFAULT_PHONE_PREFIX = '+961';
@@ -16,15 +19,16 @@ export default function RegisterPage() {
 
   useEffect(() => {
     if (authLoading) return;
-    if (user?.role === 'admin') navigate('/admin', { replace: true });
+    if (isAdminRole(user?.role)) navigate('/admin', { replace: true });
     if (user?.role === 'user') navigate('/dashboard', { replace: true });
   }, [user, authLoading, navigate]);
 
   const normalizePhone = (value) => {
-    const trimmed = value.trim();
-    if (trimmed === '') return DEFAULT_PHONE_PREFIX;
-    if (trimmed.startsWith('+')) return trimmed;
-    return `${DEFAULT_PHONE_PREFIX}${trimmed}`;
+    const normalized = normalizeLebanesePhone(value);
+    if (!normalized) return DEFAULT_PHONE_PREFIX;
+    if (normalized.startsWith('+')) return normalized;
+    if (normalized.startsWith('961')) return `+${normalized}`;
+    return `${DEFAULT_PHONE_PREFIX}${normalized}`;
   };
 
   const handlePhoneChange = (e) => {
@@ -34,11 +38,16 @@ export default function RegisterPage() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (form.password !== form.confirm) { toast.error(t('passwordMismatch')); return; }
+    const normalizedPhone = normalizePhone(form.phone_number);
+    if (!isValidLebanesePhone(normalizedPhone)) {
+      toast.error(t('phoneFormatInvalid'));
+      return;
+    }
     setLoading(true);
     try {
       const res = await api.post('/auth/user/register', {
         username: form.username, full_name: form.full_name,
-        phone_number: normalizePhone(form.phone_number), password: form.password
+        phone_number: normalizedPhone, password: form.password
       });
       const { token, ...userData } = res.data;
       login(token, userData);
@@ -77,7 +86,8 @@ export default function RegisterPage() {
           <div className="form-group">
             <label>{t('phoneNumber')}</label>
             <input className="form-control" placeholder="+961"
-              value={form.phone_number} onChange={handlePhoneChange} required />
+              value={form.phone_number} onChange={handlePhoneChange} type="tel" inputMode="tel"
+              pattern={LEBANON_PHONE_PATTERN} title={t('phoneFormatHint')} required />
           </div>
           <div className="form-group">
             <label>{t('password')}</label>

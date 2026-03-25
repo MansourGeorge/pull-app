@@ -6,6 +6,7 @@ import Layout from '../components/Layout';
 import api from '../utils/api';
 import { useLang } from '../context/LanguageContext';
 import { FiArrowLeft, FiArrowRight, FiEdit2, FiX, FiSave, FiHash, FiXCircle, FiCheckCircle, FiAward, FiRadio, FiActivity, FiTarget, FiChevronDown } from 'react-icons/fi';
+import { LEBANON_PHONE_PATTERN, isValidLebanesePhone, normalizeLebanesePhone } from '../utils/phone';
 
 let socket;
 
@@ -23,6 +24,7 @@ export default function AdminPullManage() {
   const [winnerQuery, setWinnerQuery] = useState('');
   const [winnerOpen, setWinnerOpen] = useState(false);
   const [announcing, setAnnouncing] = useState(false);
+  const [showAnnounceConfirm, setShowAnnounceConfirm] = useState(false);
   const [drawLive, setDrawLive] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -36,6 +38,7 @@ export default function AdminPullManage() {
         title: res.data.pull.title,
         description: res.data.pull.description || '',
         admin_phone: res.data.pull.admin_phone || '',
+        attempt_price: res.data.pull.attempt_price ? String(res.data.pull.attempt_price) : '',
         status: res.data.pull.status
       });
     } catch (err) {
@@ -54,10 +57,21 @@ export default function AdminPullManage() {
 
   const handleSave = async (e) => {
     e.preventDefault();
+    const normalizedPhone = normalizeLebanesePhone(form.admin_phone);
+    if (!isValidLebanesePhone(normalizedPhone)) {
+      toast.error(t('phoneFormatInvalid'));
+      return;
+    }
     setSaving(true);
     try {
       const fd = new FormData();
-      Object.keys(form).forEach(k => fd.append(k, form[k]));
+      Object.keys(form).forEach(k => {
+        if (k === 'admin_phone') {
+          fd.append(k, normalizedPhone);
+          return;
+        }
+        fd.append(k, form[k]);
+      });
       if (photo) fd.append('photo', photo);
       await api.put(`/pulls/${id}`, fd, { headers: { 'Content-Type': 'multipart/form-data' } });
       toast.success(t('pullUpdated'));
@@ -73,15 +87,22 @@ export default function AdminPullManage() {
     toast.info(t('liveStarted'));
   };
 
-  const handleAnnounceWinner = async () => {
+  const handleAnnounceWinner = () => {
     const parsedWinner = Number.parseInt(selectedWinner, 10);
     if (!Number.isInteger(parsedWinner)) { toast.error(t('selectWinner')); return; }
     if (!numbers.some(n => n.number === parsedWinner)) { toast.error(t('selectWinner')); return; }
-    if (!window.confirm(`${t('announceConfirm')} ${String(parsedWinner).padStart(2,'0')}?`)) return;
+    setShowAnnounceConfirm(true);
+  };
+
+  const confirmAnnounceWinner = async () => {
+    const parsedWinner = Number.parseInt(selectedWinner, 10);
+    if (!Number.isInteger(parsedWinner)) { toast.error(t('selectWinner')); return; }
+    if (!numbers.some(n => n.number === parsedWinner)) { toast.error(t('selectWinner')); return; }
     setAnnouncing(true);
     try {
       await api.post(`/pulls/${id}/winner`, { winner_number: parsedWinner });
       toast.success(t('winnerAnnounced'));
+      setShowAnnounceConfirm(false);
       setDrawLive(false);
       fetchData();
     } catch (err) { toast.error(err.response?.data?.message || t('errorGeneric')); }
@@ -183,13 +204,26 @@ export default function AdminPullManage() {
             </div>
             <div className="form-group">
               <label>{t('adminPhone')}</label>
-              <input className="form-control" value={form.admin_phone} onChange={e => setForm({...form, admin_phone: e.target.value})} placeholder="" required />
+              <input className="form-control" value={form.admin_phone} onChange={e => setForm({...form, admin_phone: e.target.value})} placeholder="+961..." required type="tel" inputMode="tel" pattern={LEBANON_PHONE_PATTERN} title={t('phoneFormatHint')} />
+            </div>
+            <div className="form-group">
+              <label>{t('attemptPrice')}</label>
+              <input
+                className="form-control"
+                type="number"
+                min="0.01"
+                step="0.01"
+                value={form.attempt_price || ''}
+                onChange={e => setForm({ ...form, attempt_price: e.target.value })}
+                placeholder={t('attemptPricePlaceholder')}
+                required
+              />
             </div>
             <div className="form-group">
               <label>{t('pullPhoto')}</label>
               <input className="form-control" type="file" accept="image/*" onChange={e => setPhoto(e.target.files[0])} />
             </div>
-            <div style={{ display: 'flex', gap: '0.75rem', justifyContent: 'flex-end' }}>
+            <div className="modal-actions">
               <button type="button" className="btn btn-secondary" onClick={() => setEditing(false)}>{t('cancel')}</button>
               <button type="submit" className="btn btn-primary" disabled={saving}>
                 {saving ? t('loading') : (
@@ -201,6 +235,54 @@ export default function AdminPullManage() {
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {showAnnounceConfirm && selectedInfo && (
+        <div
+          className="modal-overlay"
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !announcing) setShowAnnounceConfirm(false);
+          }}
+        >
+          <div className="modal" style={{ maxWidth: 420 }} onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header" style={{ marginBottom: '1rem' }}>
+              <span className="modal-title">{t('announceWinner')}</span>
+              <button
+                className="btn btn-icon btn-secondary"
+                onClick={() => setShowAnnounceConfirm(false)}
+                aria-label={t('close')}
+                disabled={announcing}
+              >
+                <FiX />
+              </button>
+            </div>
+            <div style={{ textAlign: 'center', marginBottom: '1.1rem' }}>
+              <div style={{ fontSize: '2.5rem', fontWeight: 900, color: 'var(--accent)', lineHeight: 1 }}>
+                {String(selectedInfo.number).padStart(2, '0')}
+              </div>
+              <div style={{ marginTop: '0.35rem', color: 'var(--text-muted)' }}>
+                {selectedInfo.arabic_name || '-'}
+              </div>
+            </div>
+            <div style={{ marginBottom: '1rem', fontWeight: 700 }}>{t('announceConfirm')}</div>
+            <div style={{ marginBottom: '1.25rem', color: 'var(--text-muted)', fontSize: '0.92rem' }}>
+              <div>{selectedInfo.full_name || t('noWinner')}{selectedInfo.username ? ` (@${selectedInfo.username})` : ''}</div>
+              {selectedInfo.phone_number && <div>{selectedInfo.phone_number}</div>}
+            </div>
+            <div className="modal-actions">
+              <button
+                className="btn btn-sm btn-secondary"
+                onClick={() => setShowAnnounceConfirm(false)}
+                disabled={announcing}
+              >
+                {t('cancel')}
+              </button>
+              <button className="btn btn-sm btn-success" onClick={confirmAnnounceWinner} disabled={announcing}>
+                {announcing ? t('loading') : t('confirm')}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

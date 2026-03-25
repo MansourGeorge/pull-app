@@ -1,0 +1,511 @@
+????
+ Step 1: Prepare Your Code ??? Make These Changes First
+Open 
+backend/server.js
+ and add these lines at the very bottom (after all your routes):
+js
+const
+ path = 
+require
+(
+'path'
+);
+// Serve React frontend
+app
+.
+use
+(
+express
+.
+static
+(
+path
+.
+join
+(
+__
+dirname
+,
+ 
+'../frontend/build'
+)));
+app
+.
+get
+(
+'*'
+,
+ 
+(
+req
+,
+ res
+)
+ =&gt; 
+{
+  
+res
+.
+sendFile
+(
+path
+.
+join
+(
+__
+dirname
+,
+ 
+'../frontend/build'
+,
+ 
+'index.html'
+));
+});
+Open 
+frontend/
+package.json
+ and 
+delete
+ this line:
+json
+"proxy"
+: 
+"http://localhost:5000"
+,
+Open the root 
+package.json
+ and make the scripts look like this:
+json
+"scripts"
+: 
+{
+  
+"install-all"
+: 
+"
+npm
+ install &amp;&amp; 
+npm
+ install --prefix backend &amp;&amp; 
+npm
+ install --prefix frontend"
+,
+  
+"build"
+: 
+"
+npm
+ run build --prefix frontend"
+,
+  
+"start"
+: 
+"node backend/server.js"
+}
+????
+ Step 2: Create a GitHub Account &amp; Upload Your Code
+Go to 
+github.com
+ ??? click 
+Sign up
+ ??? create a free account
+After logging in, click the 
++
+ button (top right) ??? 
+New repository
+Name it 
+pull-app
+, set it to 
+Public
+, click 
+Create repository
+Now on your computer, open a terminal/command prompt 
+inside your 
+pull-app
+ folder
+ and run:
+bash
+git
+ 
+init
+git
+ 
+add
+ 
+.
+git
+ commit -m 
+"first commit"
+git
+ branch -M main
+git
+ remote 
+add
+ origin https://github.com/
+ 
+MansourGeorge
+ 
+/pull-
+app.git
+git
+ push -u origin main
+``
+`
+&gt;
+ Replace `
+YOUR_USERNAME
+` with your actual GitHub username. It will ask 
+for
+ your GitHub password ??? use a **Personal Access Token** instead 
+(
+GitHub no longer accepts passwords
+)
+. To get one: GitHub ??? Settings ??? 
+Developer Settings ??? Personal Access Tokens ??? Generate New Token ??? check 
+"repo"
+ ??? copy it and use it as your password.
+---
+## 
+????
+ Step 3: Create a Railway Account
+1
+. Go to **
+railway.app
+**
+2
+. Click **Login** ??? **Login with GitHub** ??? authorize Railway
+3
+. You're 
+in
+ 
+???
+---
+## 
+????
+??? Step 4: Create a MySQL Database on Railway
+1
+. On the Railway dashboard, click **New Project**
+2
+. Click **Deploy from GitHub repo** ??? 
+select
+ your `
+pull-app
+` repository
+3
+. Railway will start trying to deploy ??? **ignore it 
+for
+ now**, first we need the database
+4
+. Inside your project, click **+ New** 
+(
+top right of the project
+)
+ ??? **Database** ??? **Add MySQL**
+5
+. Railway creates a MySQL database. Click on it, 
+then
+ click the **Variables** tab
+6
+. You'll see variables like `
+MYSQLHOST
+`, `
+MYSQLUSER
+`, `
+MYSQLPASSWORD
+`, `
+MYSQLDATABASE
+`, `
+MYSQLPORT
+` ??? **keep this tab open**, you'll need these values
+---
+## 
+??????
+ Step 5: Set Environment Variables
+1
+. Click on your **app service** 
+(
+not the database
+)
+ 
+in
+ Railway
+2
+. Go to the **Variables** tab
+3
+. Add each variable one by one by clicking **+ New Variable**:
+|
+ Variable 
+|
+ Value 
+|
+|
+----------
+|
+-------
+|
+|
+ `
+DB_HOST
+` 
+|
+ Copy from `
+MYSQLHOST
+` 
+in
+ your database variables 
+|
+|
+ `
+DB_USER
+` 
+|
+ Copy from `
+MYSQLUSER
+` 
+|
+|
+ `
+DB_PASSWORD
+` 
+|
+ Copy from `
+MYSQLPASSWORD
+` 
+|
+|
+ `
+DB_NAME
+` 
+|
+ Copy from `
+MYSQLDATABASE
+` 
+|
+|
+ `
+DB_PORT
+` 
+|
+ Copy from `
+MYSQLPORT
+` 
+(
+usually `
+3306
+`
+)
+ 
+|
+|
+ `
+JWT_SECRET
+` 
+|
+ Type any long random string, e.g. `
+mySecretKey123abc456def789
+` 
+|
+|
+ `
+PORT
+` 
+|
+ `
+5000
+` 
+|
+|
+ `
+NODE_ENV
+` 
+|
+ `
+production
+` 
+|
+---
+## 
+????
+??? Step 6: Set the Build &amp; Start Commands
+1
+. Still on your app service, go to **Settings** tab
+2
+. Find **Build Command** and set it to:
+`
+`
+`
+npm
+ run install-all 
+&amp;&amp;
+ 
+npm
+ run build
+`
+`
+`
+3
+. Find **Start Command** and set it to:
+`
+``
+npm
+ start
+????
+??? Step 7: Initialize the Database (Create Tables)
+In Railway, click on your 
+MySQL database
+Click the 
+Connect
+ tab ??? find the 
+MySQL CLI
+ or 
+Query
+ option
+You'll see a terminal/query editor ??? copy and paste the entire contents of your 
+backend/
+config
+/
+schema.sql
+ file into it and run it
+This creates all your tables and the default admin account
+Alternatively, Railway has a "Variables" tab with a 
+DATABASE_URL
+ ??? you can use a MySQL client like 
+TablePlus
+ (free app) or 
+DBeaver
+ to connect remotely and run the SQL file.
+????
+ Step 8: Get Your Public URL
+Go back to your app service in Railway
+Click the 
+Settings
+ tab ??? find 
+Domains
+Click 
+Generate Domain
+ ??? Railway gives you a free URL like 
+pull-app-
+production.up.railway.app
+Wait 2-3 minutes for the deployment to finish (watch the 
+Deployments
+ tab)
+Click your URL ??? your app should be live! 
+????
+????
+ Step 9: Log In
+Go to 
+your-
+url.up.railway.app
+/admin/login
+Username: 
+admin
+Password: 
+admin123
+Change the password immediately
+ from Settings
+????
+ If Something Goes Wrong
+Check the logs:
+ In Railway, click your app service ??? 
+Deployments
+ tab ??? click the latest deployment ??? you'll see all the logs and any error messages.
+Common issues:
+???
+ 
+"Cannot connect to database"
+ ??? Double-check your DB_ environment variables match exactly
+???
+ 
+"Build failed"
+ ??? Check the build logs, usually a missing dependency
+???
+ 
+"App crashes on start"
+ ??? Make sure you added the static file serving code to 
+server.js
+ in Step 1
+after this If I made changes in the project it will directly change on the railway or no?
+1:25 PM
+Yes, automatically
+ ??? but only after you push your changes to GitHub.
+The flow is:
+You edit code  ???  git push  ???  Railway detects it  ???  Auto rebuilds &amp; deploys
+Every time you make a change, just run these 3 commands:
+bash
+git
+ 
+add
+ 
+.
+git
+ commit -m 
+"describe what you changed"
+git
+ push
+Then Railway automatically:
+Detects the new push
+Rebuilds the project (
+npm
+ run install-all &amp;&amp; 
+npm
+ run build
+)
+Restarts the server
+Your live site is updated in ~2-3 minutes
+How to watch it deploy
+In Railway ??? click your app service ??? 
+Deployments
+ tab ??? you'll see a new deployment appear with a loading spinner ??? turns green when done 
+???
+One thing to be careful about
+If your change involves 
+database schema changes
+ (adding a new table, adding a column, etc.), Railway will 
+not
+ automatically update your database. You'd have to manually run the SQL changes in the Railway MySQL query editor.
+For 
+example
+ if you add a new column to a table:
+sql
+ALTER
+ 
+TABLE
+ pulls 
+ADD
+ 
+COLUMN
+ 
+new_field
+ 
+VARCHAR
+(
+100
+);
+You'd paste that directly into the Railway database query editor.
+But if you're only changing 
+code
+ (frontend, backend logic, styles) ??? just 
+git push
+ and you're done.
+If you use a custom domain (like pullzone.com)
+If you buy your own domain and connect it to Railway:
+In Railway ??? your app ??? 
+Settings
+ ??? 
+Domains
+ ??? 
+Add Custom Domain
+Type your domain (e.g. 
+pullzone.com
+)
+Railway shows you a DNS record to add
+Go to wherever you bought your domain (GoDaddy, Namecheap, etc.) ??? add that DNS record
+Wait 10???30 minutes
+Railway 
+automatically issues a free SSL certificate
+ via Let's Encrypt
+So your custom domain also becomes HTTPS automatically ??? Railway handles everything.
+Bottom line:
+ You never have to manually configure SSL/HTTPS with Railway. It's always handled for you. 
+???

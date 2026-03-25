@@ -23,6 +23,7 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/pulls', require('./routes/pulls'));
 app.use('/api/users', require('./routes/users'));
+app.use('/api/reports', require('./routes/reports'));
 
 //const path = require('path');
 
@@ -62,4 +63,3 @@ if (!global._serverStarted) {
 app.get('/', (req, res) => {
   res.send('Server is running');
 });
-
